@@ -1,0 +1,5 @@
+s00 r0  a01 r1  a02
+s11 r1  a12 r2  a13
+s22 r2  a23 r3  a24
+s33 r3  a34 r4  a30
+s44 r0  a40 r4  a14

@@ -1,0 +1,171 @@
+import time
+
+from sage.all import Permutations, binomial, Tuples, matrix, GF, vector, log, ceil
+
+def test_security(d, probes_r, probes_sh, probes_expl, error_proba=0.01,
+                  show_invalid_attacks=False):
+    """ 
+    Test the security of a scheme:
+    return False and prints an attack if an attack is found
+    otherwise return True
+    Probability of false positive <= error_proba (uses an heuristic)
+    
+    @arg d: order of the scheme = number of shares - 1
+    @arg probes_r: see get_probes from sage.tools
+    @arg probes_sh: see get_probes from sage.tools
+    @arg probes_expl: see get_probes from sage.tools
+    @arg show_invalid_attacks: show invalid attacks 
+         (sets of probes which satisfy the weak condition 
+          but not the strong condition) 
+    """
+
+    nb_sets_to_test = sum(
+        binomial(probes_r.ncols(), i) for i in range(1, d+1)
+    )
+    nb_sets_per_iter = sum(
+        (probes_r.ncols() - probes_r.nrows() + 1) * \
+        binomial(probes_r.nrows(), i)
+        for i in range(1, d)
+    ) + binomial(probes_r.nrows(), d)
+    nb_iter = ceil(
+        log(error_proba) / log(1. - float(nb_sets_per_iter) / nb_sets_to_test)
+    )
+    print("Number of iterations for error proba <= {}: {} " \
+          "(approximation)".format(error_proba, nb_iter))
+    
+    attack = False
+    start_clock = time.clock()
+
+    def check_print_attack(iter_i, permpos, colsrows, ab="a"):
+        """
+        Takes as input a potential attack verifying the weak condition and
+        checks whether it is actually a real attack (verifying the strong
+        condition).
+
+        Print the potential attack even if invalid (but precises it is
+        invalid), when show_invalid_attacks is set
+
+        @arg i iteration number
+        @arg permpos: position of the probes 
+             whose sum do not functionally depend on any random
+        @arg colsrows: list of columns or rows (depending on ab) of the matrix M 
+             such that \vec{a}^\intercal M \vec{b} 
+                       = sum of the probes described in permpos
+        @arg ab: if the attack is for the rows (a) or the columns (b)
+        @return True if this was a real attack
+        """
+
+        attack = False
+
+        additional_aibi = [] # additional a_i / b_i required
+        
+        M = matrix(GF(2), [r for r in colsrows if not r.is_zero()])
+        unit_vector = vector(GF(2), [1 for i in range(M.nrows())])
+        col_space = M.column_space()
+
+        if unit_vector in col_space:
+            # This condition should be satisfied most of the time
+            # and directly implies that the strong condition is satisfied
+            attack = True
+
+        if not attack:
+            # Now, the attack is real iff there is a vector of Hamming weight 
+            #    at least k = len(permpos) + 1 in the column span of M
+            # We check this using a brute force method,
+            #    because this case is really rare anyway
+            k = len(permpos) + 1
+
+            if k == M.nrows():
+                # This would require that the vector (1,...,1)
+                # is in the column space of M
+                # but we have already checked it was not the case
+                attack = False
+            else:
+                MM = col_space.basis_matrix()
+                for x in Tuples([0,1], MM.nrows()):
+                    vx = vector(GF(2), x)
+                    if (vx * MM).hamming_weight() >= k:
+                        attack = True
+                        additional_aibi = vx.zero_positions()
+                        break
+            
+
+        if attack:
+            print "Attack found (iteration {}):".format(iter_i)
+        elif show_invalid_attacks:
+            print("Invalid attack (iteration {} - satisfies the weak " \
+                "condition but not the strong one)".format(iter_i))
+
+        if attack or show_invalid_attacks:
+            for k in permpos:
+                print "  " + probes_expl[k]
+            for (k, r) in enumerate(colsrows):
+                if r.is_zero():
+                    print "  {}{}".format(ab, k)
+            for k in additional_aibi:
+                print "  {}{}".format(ab, k)
+            print "----"
+
+        return attack
+
+    for i in range(nb_iter):
+        try:
+            sig_check() # enable interruption in cython
+        except:
+            pass
+            
+        if i % 2000 == 0:
+            print("Number of tested permutations: {:6d} / {} " \
+                  "- {:4.3f}s").format(i, nb_iter, time.clock()-start_clock)
+        perm = Permutations(probes_r.ncols()).random_element()
+        M = probes_r.with_permuted_columns(perm)
+        M = M.rref()
+        nonpivots = M.nonpivots()
+        pivots = M.pivots()
+        cols = M.columns(copy = False)
+        
+        for j in nonpivots:
+            C = cols[j]
+            if C.hamming_weight() <= d-1:
+                pos = [j] + [pivots[k] for k in C.nonzero_positions()]
+                permpos = [perm[k]-1 for k in pos]
+                # columns indices we need to probe
+                sh = sum(probes_sh[k] for k in permpos)
+
+                #
+                # Check the weak condition on "a"
+                #
+                
+                nb_a_to_probe = sum(
+                    1 for r in sh.rows(copy=False) if r.is_zero()
+                )
+                # nb of values a we still need to probe
+                #    (to satisfy the weak condition)
+                
+                if len(permpos) + nb_a_to_probe <= d:
+                    attack = check_print_attack(
+                        i, permpos, sh.rows(copy=False), "a"
+                    )
+                    if attack:
+                        break
+
+                #
+                # Check the weak condition on "b"
+                #
+                
+                nb_b_to_probe = sum(
+                    1 for c in sh.columns(copy=False) if c.is_zero()
+                )
+                # nb of values b we still need to probe
+                #    (to satisfy the weak condition)
+
+                if len(permpos) + nb_b_to_probe <= d:
+                    attack = check_print_attack(
+                        i, permpos, sh.columns(copy=False), "b"
+                    )
+                    if attack:
+                        break
+                        
+        if attack:
+            break
+

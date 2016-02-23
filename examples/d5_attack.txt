@@ -1,0 +1,6 @@
+s00 r05 a05 r4  a04 r03 a03 r2  a02 r01 a01
+s11 r15 a15 r4  a14 r13 a13 r2  a12 r01
+s22 r25 a25 r23 a24 r4  a23
+s33 r35 a35 r4  a34 r23 r13 r03
+s44 r45 a45
+s55 r45 r35 r25 r15 r05
