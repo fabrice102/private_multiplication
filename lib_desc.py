@@ -110,13 +110,13 @@ class DescValCoordNode(DescValNode):
     @classmethod
     def parse(cls, s, loc, toks):
         del s
-        hexnums = "0123456789abcdef"
+        hexnums = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
         if len(toks) != 3 or \
            toks[0] not in cls.t_list or \
            toks[1] not in hexnums or toks[2] not in hexnums:
             raise SyntaxError("Syntax error on {}: invalid a/s value '{}'" \
                               .format(loc, toks))
-        return cls(toks[0], int(toks[1], 16), int(toks[2], 16))
+        return cls(toks[0], hexnums.find(toks[1]), hexnums.find(toks[2]))
 
 term_bnf = None
 def get_term_bnf():
